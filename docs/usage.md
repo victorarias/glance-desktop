@@ -25,10 +25,12 @@ For capture permission help, see the [macOS FAQ](../README.md#macos-faq).
 
 ### Use the macOS screenshot shortcut
 
-Turn **Native screenshots** on at the bottom of the window to keep using
-**⌃⌘⇧4** (Control + Command + Shift + 4). Allow Glance in **System Settings →
+Click the **Native screenshots** clipboard button beside the capture buttons in
+the toolbar to keep using **⌃⌘⇧4** (Control + Command + Shift + 4).
+Allow Glance in **System Settings →
 Privacy & Security → Input Monitoring**, then restart Glance or turn the setting
-off and on. The setting remembers your choice; Glance must be running.
+off and on. The button highlights when enabled; hover to see its state and shortcut.
+The setting remembers your choice; Glance must be running.
 
 Use the native selector as usual. Glance observes the shortcut without taking it
 over, then opens the new clipboard image when you finish the selection. Space

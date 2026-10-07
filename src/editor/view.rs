@@ -33,13 +33,7 @@ impl Editor {
         let detail = if state.pending.is_some() {
             "Latest screenshot ready. Opening replaces the current image and undo history.".into()
         } else {
-            state.error.clone().unwrap_or_else(|| {
-                if state.active() {
-                    "Use ⌃⌘⇧4 as usual. Glance opens the completed clipboard capture.".into()
-                } else {
-                    "Open macOS clipboard screenshots in Glance. Requires Input Monitoring.".into()
-                }
-            })
+            state.error.clone().unwrap_or_default()
         };
         div()
             .flex_shrink_0()
@@ -51,18 +45,6 @@ impl Editor {
             .border_t_1()
             .border_color(rgb(theme.divider))
             .bg(rgb(theme.chrome))
-            .child(self.button(
-                if state.enabled {
-                    "Native screenshots: On"
-                } else {
-                    "Native screenshots: Off"
-                },
-                state.enabled,
-                cx,
-                Action::SetNativeScreenshotImport {
-                    enabled: !state.enabled,
-                },
-            ))
             .child(
                 div()
                     .flex_1()
@@ -566,6 +548,30 @@ impl Render for Editor {
                         cx,
                         Action::Capture { area: false },
                     ))
+                    .when(cfg!(target_os = "macos"), |el| {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let enabled = self.native_screenshots.enabled;
+                            let label = if !enabled {
+                                "Native screenshots · ⌃⌘⇧4 · Off (click to enable)"
+                            } else if self.native_screenshots.error.is_some() {
+                                "Native screenshots · ⌃⌘⇧4 · Permission needed (click to disable)"
+                            } else {
+                                "Native screenshots · ⌃⌘⇧4 · On (click to disable)"
+                            };
+                            el.child(self.compact_button(
+                                label,
+                                "clipboard-paste",
+                                enabled,
+                                cx,
+                                Action::SetNativeScreenshotImport { enabled: !enabled },
+                            ))
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            el
+                        }
+                    })
                     .child(self.compact_button(
                         "Open · ⌘O",
                         "folder-open",
@@ -670,16 +676,21 @@ impl Render for Editor {
             .when_some(self.feedback.copy, |el, feedback| {
                 el.child(self.copy_confirmation(feedback, cx))
             })
-            .when(cfg!(target_os = "macos"), |el| {
-                #[cfg(target_os = "macos")]
-                {
-                    el.child(self.native_screenshot_controls(cx))
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    el
-                }
-            });
+            .when(
+                cfg!(target_os = "macos")
+                    && (self.native_screenshots.pending.is_some()
+                        || self.native_screenshots.error.is_some()),
+                |el| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        el.child(self.native_screenshot_controls(cx))
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        el
+                    }
+                },
+            );
         self.accessibility.root(contents)
     }
 }
