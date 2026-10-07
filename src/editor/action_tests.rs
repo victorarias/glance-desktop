@@ -1571,3 +1571,298 @@ fn multi_selection_bridge_checks_state_revisions_and_group_undo(cx: &mut TestApp
         assert_eq!(e.document.marks, original);
     });
 }
+
+#[gpui::test]
+fn native_screenshot_setting_and_pending_actions_use_bridge(cx: &mut TestAppContext) {
+    use crate::automation::Request;
+    let entity = cx.new(|cx| Editor::with_native(cx, false));
+    entity.update(cx, |e, cx| {
+        let state = |e: &mut Editor, cx: &mut gpui::Context<Editor>| {
+            let (reply, response) = std::sync::mpsc::channel();
+            e.automation(Request::State(reply), cx);
+            response.recv().unwrap().unwrap()["native_screenshots"].clone()
+        };
+        assert_eq!(state(e, cx)["enabled"], false);
+        #[cfg(target_os = "macos")]
+        {
+            let (reply, response) = std::sync::mpsc::channel();
+            e.automation(
+                Request::Dispatch {
+                    action: Action::SetNativeScreenshotImport { enabled: true },
+                    expected_revision: Some(0),
+                    reply,
+                },
+                cx,
+            );
+            response.recv().unwrap().unwrap();
+            assert_eq!(state(e, cx)["enabled"], true);
+            assert_eq!(
+                state(e, cx)["active"],
+                false,
+                "virtual platform must not request permissions"
+            );
+            assert_eq!(e.preview.revision, 0, "setting does not edit content");
+        }
+        let pending = std::sync::Arc::new(image::RgbaImage::from_pixel(
+            4,
+            3,
+            image::Rgba([1, 2, 3, 255]),
+        ));
+        e.native_screenshots.pending = Some(pending.clone());
+        let (reply, response) = std::sync::mpsc::channel();
+        e.automation(
+            Request::Dispatch {
+                action: Action::OpenNativeScreenshot,
+                expected_revision: Some(1),
+                reply,
+            },
+            cx,
+        );
+        assert!(response.recv().unwrap().is_err());
+        assert!(e.native_screenshots.pending.is_some());
+        let (reply, response) = std::sync::mpsc::channel();
+        e.automation(
+            Request::Dispatch {
+                action: Action::OpenNativeScreenshot,
+                expected_revision: Some(0),
+                reply,
+            },
+            cx,
+        );
+        response.recv().unwrap().unwrap();
+        assert!(std::sync::Arc::ptr_eq(&pending, &e.document.base));
+        assert_eq!(state(e, cx)["pending"], false);
+        assert_eq!(e.native_screenshots.clean_revision, e.preview.revision);
+        // Disable and dismiss are available while the new preview is busy.
+        e.native_screenshots.pending = Some(pending);
+        e.dispatch(Action::DismissNativeScreenshot, cx).unwrap();
+        assert!(e.native_screenshots.pending.is_none());
+        e.dispatch(Action::SetNativeScreenshotImport { enabled: false }, cx)
+            .unwrap();
+        assert_eq!(state(e, cx)["enabled"], false);
+    });
+}
+
+#[gpui::test]
+fn native_screenshots_preserve_edits_and_undo_until_explicitly_opened(cx: &mut TestAppContext) {
+    let entity = cx.new(|cx| Editor::with_native(cx, false));
+    entity.update(cx, |e, cx| {
+        e.native_screenshots.enabled = true;
+        let base = e.document.base.clone();
+        let mark = crate::document::Mark {
+            tool: crate::document::Tool::Arrow,
+            points: vec![(10., 10.), (30., 30.)],
+            curve: None,
+            color: [255, 0, 0, 255],
+            width: 2.,
+            text: String::new(),
+            style: Default::default(),
+        };
+        e.document.commit(mark.clone());
+        e.changed();
+        let revision = e.preview.revision;
+        let first = std::sync::Arc::new(image::RgbaImage::from_pixel(
+            3,
+            2,
+            image::Rgba([10, 20, 30, 255]),
+        ));
+        let latest = std::sync::Arc::new(image::RgbaImage::from_pixel(
+            4,
+            3,
+            image::Rgba([40, 50, 60, 255]),
+        ));
+        e.dispatch(Action::PrepareNativeScreenshot { image: first }, cx)
+            .unwrap();
+        e.dispatch(
+            Action::PrepareNativeScreenshot {
+                image: latest.clone(),
+            },
+            cx,
+        )
+        .unwrap();
+        assert!(std::sync::Arc::ptr_eq(&base, &e.document.base));
+        assert_eq!(e.document.marks, vec![mark.clone()]);
+        assert_eq!(e.preview.revision, revision);
+        assert!(std::sync::Arc::ptr_eq(
+            e.native_screenshots.pending.as_ref().unwrap(),
+            &latest
+        ));
+        e.dispatch(Action::DismissNativeScreenshot, cx).unwrap();
+        e.dispatch(Action::Undo, cx).unwrap();
+        assert!(e.document.marks.is_empty());
+        e.receive(
+            super::Message::Preview(
+                e.preview.revision,
+                0,
+                0,
+                super::render_image(super::preview_base(&e.document)),
+            ),
+            cx,
+        );
+        e.dispatch(Action::Redo, cx).unwrap();
+        e.receive(
+            super::Message::Preview(
+                e.preview.revision,
+                1,
+                0,
+                super::render_image(super::preview_base(&e.document)),
+            ),
+            cx,
+        );
+        assert_eq!(e.document.marks, vec![mark]);
+        e.dispatch(
+            Action::PrepareNativeScreenshot {
+                image: latest.clone(),
+            },
+            cx,
+        )
+        .unwrap();
+        e.dispatch(Action::OpenNativeScreenshot, cx).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&latest, &e.document.base));
+        assert!(e.document.marks.is_empty());
+        e.document.undo();
+        assert!(
+            e.document.marks.is_empty(),
+            "explicit replacement starts a fresh document"
+        );
+    });
+}
+
+#[gpui::test]
+fn native_screenshot_defers_for_busy_editor_and_unfinished_gesture(cx: &mut TestAppContext) {
+    let entity = cx.new(|cx| Editor::with_native(cx, false));
+    entity.update(cx, |e, cx| {
+        let image = std::sync::Arc::new(image::RgbaImage::from_pixel(
+            3,
+            2,
+            image::Rgba([5, 6, 7, 255]),
+        ));
+        let original = e.document.base.clone();
+        // Late prepared results after disabling cannot alter the document.
+        e.dispatch(
+            Action::PrepareNativeScreenshot {
+                image: image.clone(),
+            },
+            cx,
+        )
+        .unwrap();
+        assert!(e.native_screenshots.pending.is_none());
+        e.native_screenshots.enabled = true;
+        let operation = e.start_operation(super::jobs::OperationKind::Save).unwrap();
+        e.dispatch(
+            Action::PrepareNativeScreenshot {
+                image: image.clone(),
+            },
+            cx,
+        )
+        .unwrap();
+        assert!(e.native_screenshots.pending.is_some());
+        assert!(e.dispatch(Action::OpenNativeScreenshot, cx).is_err());
+        assert!(std::sync::Arc::ptr_eq(&original, &e.document.base));
+        e.receive(
+            super::Message::Operation(operation, super::jobs::OperationResult::Saved(Ok(None))),
+            cx,
+        );
+        e.interaction.gesture =
+            super::state::Gesture::Panning(gpui::point(gpui::px(1.), gpui::px(2.)));
+        assert!(e.dispatch(Action::OpenNativeScreenshot, cx).is_err());
+        assert!(e.native_screenshots.pending.is_some());
+        e.cancel_gesture();
+        e.dispatch(Action::OpenNativeScreenshot, cx).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&image, &e.document.base));
+    });
+}
+
+#[gpui::test]
+fn native_screenshot_auto_opens_only_an_unedited_idle_document(cx: &mut TestAppContext) {
+    let entity = cx.new(|cx| Editor::with_native(cx, false));
+    entity.update(cx, |e, cx| {
+        e.native_screenshots.enabled = true;
+        let image = std::sync::Arc::new(image::RgbaImage::from_pixel(
+            3,
+            2,
+            image::Rgba([5, 6, 7, 255]),
+        ));
+        e.dispatch(
+            Action::PrepareNativeScreenshot {
+                image: image.clone(),
+            },
+            cx,
+        )
+        .unwrap();
+        assert!(e.native_screenshots.pending.is_none());
+        assert!(std::sync::Arc::ptr_eq(&image, &e.document.base));
+        assert_eq!(e.preview.revision, e.native_screenshots.clean_revision);
+    });
+}
+
+#[gpui::test]
+fn native_screenshot_does_not_commit_unfinished_text(cx: &mut TestAppContext) {
+    let entity = cx.new(|cx| Editor::with_native(cx, false));
+    entity.update(cx, |e, cx| {
+        e.native_screenshots.enabled = true;
+        let original = e.document.base.clone();
+        e.interaction.text_edit = Some(crate::text::Edit::new(crate::document::Mark {
+            tool: crate::document::Tool::Text,
+            points: vec![(10., 10.)],
+            curve: None,
+            color: [0, 0, 0, 255],
+            width: 2.,
+            text: "Unfinished label".into(),
+            style: Default::default(),
+        }));
+        e.interaction
+            .text_edit
+            .as_mut()
+            .unwrap()
+            .replace_text("Unfinished label");
+        let image = std::sync::Arc::new(image::RgbaImage::new(4, 3));
+        e.dispatch(Action::PrepareNativeScreenshot { image }, cx)
+            .unwrap();
+        assert!(e.native_screenshots.pending.is_some());
+        assert!(e.dispatch(Action::OpenNativeScreenshot, cx).is_err());
+        assert!(std::sync::Arc::ptr_eq(&original, &e.document.base));
+        assert!(e.document.marks.is_empty());
+        assert_eq!(
+            e.interaction.text_edit.as_ref().unwrap().buffer.text(),
+            "Unfinished label"
+        );
+        e.dispatch(Action::SetNativeScreenshotImport { enabled: false }, cx)
+            .unwrap();
+        assert!(e.native_screenshots.pending.is_none());
+        assert!(e.interaction.text_edit.is_some());
+    });
+}
+
+#[cfg(target_os = "macos")]
+#[gpui::test]
+fn native_screenshot_delivery_is_invalidated_by_disable_and_observer_loss(cx: &mut TestAppContext) {
+    let entity = cx.new(|cx| Editor::with_native(cx, false));
+    entity.update(cx, |e, cx| {
+        e.dispatch(Action::SetNativeScreenshotImport { enabled: true }, cx)
+            .unwrap();
+        let old_epoch = e.native_screenshots.epoch;
+        e.dispatch(Action::SetNativeScreenshotImport { enabled: false }, cx)
+            .unwrap();
+        e.dispatch(Action::SetNativeScreenshotImport { enabled: true }, cx)
+            .unwrap();
+        let original = e.document.base.clone();
+        let deliver = |e: &mut Editor, cx: &mut gpui::Context<Editor>, epoch| {
+            e.receive(
+                super::Message::NativeScreenshot {
+                    epoch,
+                    token: 1,
+                    generation: 2,
+                    result: Ok(Some(std::sync::Arc::new(image::RgbaImage::new(3, 2)))),
+                },
+                cx,
+            );
+        };
+        deliver(e, cx, old_epoch);
+        assert!(e.native_screenshots.pending.is_none());
+        // An unavailable/stopped observer rejects delivery even in this epoch.
+        deliver(e, cx, e.native_screenshots.epoch);
+        assert!(e.native_screenshots.pending.is_none());
+        assert!(std::sync::Arc::ptr_eq(&original, &e.document.base));
+    });
+}

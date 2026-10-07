@@ -120,14 +120,7 @@ pub fn save(image: RgbaImage) -> Result<Option<PathBuf>, String> {
 }
 #[cfg(target_os = "macos")]
 pub fn copy(image: RgbaImage) -> Result<(), String> {
-    arboard::Clipboard::new()
-        .map_err(|e| e.to_string())?
-        .set_image(arboard::ImageData {
-            width: image.width() as usize,
-            height: image.height() as usize,
-            bytes: std::borrow::Cow::Owned(image.into_raw()),
-        })
-        .map_err(|e| e.to_string())
+    crate::native_screenshots::copy_image(image)
 }
 
 #[cfg(target_os = "macos")]

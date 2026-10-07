@@ -26,6 +26,12 @@ impl Editor {
                     "sampling_tool_color":self.panels.sampling_tool_color,
                     "playback":{"preparing":self.preview_preparing(),"paused":self.playback.paused,"time":self.clip_time(),"seconds":self.document.animation_seconds()},
                     "status":self.feedback.status,
+                    "native_screenshots": {
+                        "enabled": self.native_screenshots.enabled,
+                        "active": self.native_screenshots.active(),
+                        "error": self.native_screenshots.error,
+                        "pending": self.native_screenshots.pending.is_some(),
+                    },
                 })));
             }
             Request::Dispatch {

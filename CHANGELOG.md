@@ -6,6 +6,8 @@ Notable user-visible changes are recorded here.
 
 ### Added
 
+- Opt-in macOS native screenshot import observes ⌃⌘⇧4, opens completed clipboard
+  captures, and asks before replacing a document that has been edited.
 - The editor interface follows the system’s light or dark appearance, including
   changes while Glance is running. Image content and exported media keep their colors.
 

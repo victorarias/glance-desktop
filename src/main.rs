@@ -17,6 +17,8 @@ mod linux_compute;
 mod mcp;
 mod menus;
 mod motion_shader;
+#[cfg(any(target_os = "macos", test))]
+mod native_screenshots;
 mod navigation;
 #[cfg(test)]
 mod performance;

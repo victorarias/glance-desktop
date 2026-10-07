@@ -23,6 +23,30 @@ to reopen it; **⌘Q** quits.
 
 For capture permission help, see the [macOS FAQ](../README.md#macos-faq).
 
+### Use the macOS screenshot shortcut
+
+Turn **Native screenshots** on at the bottom of the window to keep using
+**⌃⌘⇧4** (Control + Command + Shift + 4). Allow Glance in **System Settings →
+Privacy & Security → Input Monitoring**, then restart Glance or turn the setting
+off and on. The setting remembers your choice; Glance must be running.
+
+Use the native selector as usual. Glance observes the shortcut without taking it
+over, then opens the new clipboard image when you finish the selection. Space
+switches to window capture. Escape cancels. File-saving shortcuts such as ⌘⇧4
+and full-screen capture with ⌃⌘⇧3 are outside this setting.
+
+If the current document has been edited, a text edit or gesture is unfinished,
+or an operation is busy, the latest screenshot waits. **Open (replace current)**
+replaces the image and its undo history; **Dismiss** keeps your work. A newer
+capture replaces the pending screenshot. Save or copy work you want to keep
+before opening the replacement.
+
+Glance infers a capture from the shortcut, a completed selection, and a new
+clipboard image. macOS does not identify the image's source through this API.
+An unrelated key or clipboard ownership change cancels the pending detection;
+clipboard handoff is limited to ten seconds after the selection finishes. The
+selection itself has no time limit. Glance's own image copies are ignored.
+
 ## Annotate and select
 
 | Tool | Key | How to use it |

@@ -31,6 +31,16 @@ pub(crate) enum Action {
     CopyImage,
     CopyRemote,
     PasteImage,
+    SetNativeScreenshotImport {
+        enabled: bool,
+    },
+    OpenNativeScreenshot,
+    DismissNativeScreenshot,
+    /// Immutable clipboard snapshot; MCP uses OpenNativeScreenshot once ready.
+    #[serde(skip)]
+    PrepareNativeScreenshot {
+        image: std::sync::Arc<image::RgbaImage>,
+    },
     // Contextual editing commands operate on text while an inline edit is open.
     Copy,
     Cut,

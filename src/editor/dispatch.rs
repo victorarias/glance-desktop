@@ -60,6 +60,9 @@ impl Editor {
                     | Action::Quit
                     | Action::ClosePanel { .. }
                     | Action::Cancel
+                    | Action::SetNativeScreenshotImport { .. }
+                    | Action::PrepareNativeScreenshot { .. }
+                    | Action::DismissNativeScreenshot
             )
         {
             return Err("Editor is busy. Wait for the current operation to finish.".into());
@@ -259,11 +262,20 @@ impl Editor {
                 | Action::PanBy { .. }
                 | Action::Show
                 | Action::CommitText
+                | Action::SetNativeScreenshotImport { .. }
+                | Action::PrepareNativeScreenshot { .. }
+                | Action::DismissNativeScreenshot
         ) {
             self.panels.sampling_color = None;
             self.panels.sampling_tool_color = false;
         }
         let previous_operation = self.operations.active.as_ref().map(|op| op.id);
+        if matches!(
+            action,
+            Action::Copy | Action::Cut | Action::CopyImage | Action::CopyRemote
+        ) {
+            self.native_screenshots.cancel_capture();
+        }
         match action {
             Action::Edit { edit } => self.edit_document(edit, cx)?,
             Action::ApplyPreparedDocument {
@@ -296,6 +308,14 @@ impl Editor {
             Action::CopyImage => self.export(false, cx),
             Action::CopyRemote => self.copy_remote(cx),
             Action::PasteImage => self.paste_image(cx),
+            Action::SetNativeScreenshotImport { enabled } => {
+                self.set_native_screenshot_import(enabled, cx)?
+            }
+            Action::OpenNativeScreenshot => self.open_native_screenshot(cx)?,
+            Action::DismissNativeScreenshot => {
+                self.native_screenshots.pending = None;
+            }
+            Action::PrepareNativeScreenshot { image } => self.prepare_native_screenshot(image, cx),
             Action::Copy
             | Action::Cut
             | Action::Paste

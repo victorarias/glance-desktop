@@ -62,6 +62,25 @@ Coordinates are physical source-image pixels. Use IDs from the latest
 edit; pass `expected_revision` with mutations to reject stale requests.
 PNG previews are inline content; exported media paths refer to the computer running Glance.
 
+## Native screenshot import (macOS)
+
+The setting and pending screenshot use shared editor actions:
+
+```json
+{"action":{"type":"set_native_screenshot_import","enabled":true}}
+{"action":{"type":"open_native_screenshot"}}
+{"action":{"type":"dismiss_native_screenshot"}}
+```
+
+Enabling persists the choice and may request Input Monitoring. `get_editor_state`
+returns `native_screenshots.enabled` (the preference), `active` (observer running),
+`error` (permission or observer failure), and `pending` (latest screenshot waiting).
+The observer reacts to Control + Command + Shift + 4 while Glance is running.
+Edited or busy documents keep the screenshot pending. Opening explicitly replaces
+the current image and undo history; dismissing drops the pending capture. An
+in-flight snapshot is invalidated when observation stops or is disabled. On Linux,
+enabling returns an unsupported-platform error.
+
 ## Tools
 
 | Tool | Purpose |

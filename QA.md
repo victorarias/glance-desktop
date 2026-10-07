@@ -34,6 +34,13 @@ with explicit authorization for that verification.
 
 - Install/open the release binary, follow the opening FAQ, grant Screen Recording,
   and capture an area/main display. Check selector cancellation and capture after relaunch.
+- With a synthetic target window, enable Native screenshots, grant Input Monitoring,
+  and test ⌃⌘⇧4 region capture and Space/window capture. Verify Escape followed by
+  an unrelated clipboard image does not import it, long selections still work,
+  and Glance's own copies do not trigger imports. Check relaunch persistence,
+  denied/revoked permission, disabling during capture, and rapid consecutive captures.
+  Confirm edited/busy documents retain their pixels and undo until Open is chosen;
+  Dismiss keeps the document. Check the setting and pending controls at minimum size.
 - Test toolbar/menu/global shortcuts, clipboard import/copy, file drop, open/save
   cancellation, overwrite confirmation, and extension handling.
 - Draw each annotation. Select, move, restyle, duplicate, delete, and undo/redo.

@@ -48,6 +48,15 @@ pub(crate) enum Message {
     Magnify(f32, (f32, f32), bool),
     #[cfg(target_os = "macos")]
     Hotkey(bool),
+    #[cfg(target_os = "macos")]
+    NativeScreenshot {
+        epoch: u64,
+        token: u64,
+        generation: i64,
+        result: Result<Option<Arc<image::RgbaImage>>, String>,
+    },
+    #[cfg(target_os = "macos")]
+    NativeScreenshotObserverStopped,
     Preview(u64, usize, u32, Arc<RenderImage>),
     MotionPreviewReady,
     Operation(OperationId, OperationResult),
@@ -188,6 +197,36 @@ impl Editor {
             Message::Hotkey(area) => {
                 self.dispatch_ui(Action::Capture { area }, cx);
             }
+            #[cfg(target_os = "macos")]
+            Message::NativeScreenshotObserverStopped => cx.notify(),
+            #[cfg(target_os = "macos")]
+            Message::NativeScreenshot {
+                epoch,
+                token,
+                generation,
+                result,
+            } => {
+                if epoch != self.native_screenshots.epoch
+                    || !self
+                        .native_screenshots
+                        .monitor
+                        .as_mut()
+                        .is_some_and(|monitor| monitor.accept(token, generation))
+                {
+                    return;
+                }
+                match result {
+                    Ok(Some(image)) => {
+                        self.dispatch_ui(Action::PrepareNativeScreenshot { image }, cx)
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        self.feedback.status =
+                            format!("Native screenshot was not imported: {error}");
+                        cx.notify();
+                    }
+                }
+            }
             Message::Preview(revision, count, inside_padding, image) => {
                 self.preview.rendering = false;
                 if revision == self.preview.revision {
@@ -315,19 +354,7 @@ impl Editor {
                 self.feedback.status = "Cropped • ⌘Z to restore".into();
             }
             OperationResult::Image(Ok(Some(image))) => {
-                self.set_selection(Vec::new());
-                self.interaction.gesture = Gesture::Idle;
-                self.document = Document::new(image);
-                self.panels.backdrop_disabled = None;
-                self.panels.sampling_color = None;
-                self.panels.sampling_tool_color = false;
-                self.panels.popup = None;
-                self.viewport.zoom = None;
-                self.viewport.pan = (0., 0.);
-                self.preview.mark_count = usize::MAX;
-                self.preview.waiting = true;
-                self.changed();
-                self.feedback.status = "Preparing image…".into();
+                self.install_image(Arc::new(image));
             }
             OperationResult::Image(Ok(None)) => {
                 self.feedback.status = "Selection canceled".into();

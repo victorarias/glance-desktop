@@ -78,6 +78,7 @@ fn every_serializable_action_is_exposed_or_explicitly_excluded() {
         .chain(excluded.map(|(name, _)| name))
         .collect();
     assert!(!accounted.contains("apply_prepared_document"));
+    assert!(!accounted.contains("prepare_native_screenshot"));
     assert_eq!(
         accounted,
         variants.into_iter().collect(),
@@ -89,6 +90,7 @@ fn every_serializable_action_is_exposed_or_explicitly_excluded() {
 fn every_exposed_action_has_a_valid_round_trip_payload() {
     let fixtures = [
         json!({"type":"capture","area":true}),
+        json!({"type":"set_native_screenshot_import","enabled":true}),
         json!({"type":"open_path","path":"/tmp/glance-synthetic.png"}),
         json!({"type":"select_tool","tool":"arrow"}),
         json!({"type":"select_region","rectangle":[10,20,30,40],"additive":true}),

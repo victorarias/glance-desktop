@@ -26,6 +26,65 @@ pub(super) fn icon(name: &'static str, color: u32) -> impl IntoElement {
         .text_color(rgb(color))
 }
 impl Editor {
+    #[cfg(target_os = "macos")]
+    fn native_screenshot_controls(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = crate::theme::Theme::get(cx);
+        let state = &self.native_screenshots;
+        let detail = if state.pending.is_some() {
+            "Latest screenshot ready. Opening replaces the current image and undo history.".into()
+        } else {
+            state.error.clone().unwrap_or_else(|| {
+                if state.active() {
+                    "Use ⌃⌘⇧4 as usual. Glance opens the completed clipboard capture.".into()
+                } else {
+                    "Open macOS clipboard screenshots in Glance. Requires Input Monitoring.".into()
+                }
+            })
+        };
+        div()
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .py_1()
+            .border_t_1()
+            .border_color(rgb(theme.divider))
+            .bg(rgb(theme.chrome))
+            .child(self.button(
+                if state.enabled {
+                    "Native screenshots: On"
+                } else {
+                    "Native screenshots: Off"
+                },
+                state.enabled,
+                cx,
+                Action::SetNativeScreenshotImport {
+                    enabled: !state.enabled,
+                },
+            ))
+            .child(
+                div()
+                    .flex_1()
+                    .text_xs()
+                    .text_color(rgb(theme.secondary))
+                    .child(detail),
+            )
+            .when(state.pending.is_some(), |el| {
+                el.child(self.button(
+                    "Open (replace current)",
+                    false,
+                    cx,
+                    Action::OpenNativeScreenshot,
+                ))
+                .child(self.button(
+                    "Dismiss",
+                    false,
+                    cx,
+                    Action::DismissNativeScreenshot,
+                ))
+            })
+    }
     pub(super) fn tool_button(&self, tool: Tool, cx: &Context<Self>) -> impl IntoElement {
         let theme = crate::theme::Theme::get(cx);
         let (name, key) = match tool {
@@ -610,6 +669,16 @@ impl Render for Editor {
             })
             .when_some(self.feedback.copy, |el, feedback| {
                 el.child(self.copy_confirmation(feedback, cx))
+            })
+            .when(cfg!(target_os = "macos"), |el| {
+                #[cfg(target_os = "macos")]
+                {
+                    el.child(self.native_screenshot_controls(cx))
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    el
+                }
             });
         self.accessibility.root(contents)
     }

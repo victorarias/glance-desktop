@@ -11,6 +11,7 @@ mod feedback;
 mod input;
 mod jobs;
 mod lens;
+mod native_screenshots;
 mod panels;
 mod state;
 #[cfg(test)]
@@ -50,6 +51,7 @@ pub(crate) struct Editor {
     video_export: VideoExportState,
     panels: PanelState,
     feedback: FeedbackState,
+    native_screenshots: native_screenshots::State,
     #[cfg(target_os = "macos")]
     _gestures: Option<gestures::Monitor>,
     pub(crate) focus: FocusHandle,
@@ -168,6 +170,24 @@ impl Editor {
         .detach();
         let canvas_bounds = Rc::new(Cell::new(Bounds::default()));
         let focus = cx.focus_handle();
+        #[allow(unused_mut)]
+        let mut native_screenshots = native_screenshots::State::new(native);
+        #[cfg(target_os = "macos")]
+        if native {
+            native_screenshots.timer = Some(cx.spawn(async move |view, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(100))
+                        .await;
+                    if view
+                        .update(cx, |editor, _| editor.poll_native_screenshots())
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }));
+        }
         let color_pickers = std::array::from_fn(|stop| {
             cx.new(|cx| {
                 crate::color_picker::ColorPicker::new(
@@ -299,6 +319,7 @@ impl Editor {
                 copy: None,
                 timer: None,
             },
+            native_screenshots,
             #[cfg(target_os = "macos")]
             _gestures: gestures,
             focus,

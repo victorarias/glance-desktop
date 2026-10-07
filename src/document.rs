@@ -69,8 +69,11 @@ pub struct Document {
 }
 impl Document {
     pub fn new(base: RgbaImage) -> Self {
+        Self::from_shared(Arc::new(base))
+    }
+    pub(crate) fn from_shared(base: Arc<RgbaImage>) -> Self {
         Self {
-            base: Arc::new(base),
+            base,
             marks: vec![],
             backdrop: None,
             image_animation: Default::default(),
